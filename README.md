@@ -1,169 +1,192 @@
-# Driving the Sony CDX-A250 LCD with an LC75826 and Arduino
+# Sony CDX-A250 LCD Panel — LC75826 + Arduino
 
-This repository documents a reverse-engineering project built around the detachable front-panel/display board from a **Sony CDX-A250** car radio. The board uses an **LC75826W LCD driver** (Sony designator **IC901**) to control the front-panel LCD.
+Reverse-engineering notes, reference firmware, and reproduction guidance for driving the **Sony CDX-A250** detachable front-panel LCD with an Arduino through its **LC75826W** LCD driver.
 
-The supplied Arduino sketch demonstrates direct control of the display-driver interface and includes example display patterns plus a segment-identification routine.
+[Watch the full project video on YouTube](https://youtu.be/Oe9wPHL-y7k)
 
-> **Technical review status**
->
-> Manufacturer/service-manual facts in this repository are cited to their primary source. Behavior visible in the supplied project code or media is described as observation. A few project-specific reproduction details—especially the final bench-power connection, exact connector wiring, and interpretation of some control bytes—still require engineer confirmation and are marked `NEEDS_ENGINEER_REVIEW` rather than guessed.
+![Sony CDX-A250 display interface](docs/assets/sony-display-interface.svg)
 
-## What the project demonstrates
+## What this project does
 
-Project media shows the removed CDX-A250 display/key board operating independently and displaying:
+The Sony CDX-A250 front panel contains an LC75826W LCD driver (IC901 in the Sony service documentation). This repository shows how the panel was driven independently of the original head unit and documents the parts of the LC75826 interface needed to understand and reproduce the experiment.
 
-- an all-segments test;
-- `HI FOLKS`;
-- `SONY`;
-- `CDX-A250`;
-- individual segment tests used while mapping the LCD.
+The supplied Arduino sketch demonstrates:
 
-The current Arduino source also contains those demo patterns and the interactive segment-search routine.
+- direct CE / CL / DI communication with the LC75826;
+- all-segments on/off tests;
+- fixed display patterns including `HI FOLKS`, `SONY`, and `CDX-A250`;
+- an interactive segment-identification routine;
+- practical use of the LC75826 display-data groups and control fields.
 
-## Hardware identification
+The repository is intentionally focused on the **working project shown in the video**. It is not a generic LC75826 library.
 
-The Sony service manual identifies the front-panel LCD driver as **IC901, LC75826W-0S-E**, connected to **LCD901**. In the display block diagram, the system controller supplies the LCD driver with three serial-interface signals: data, clock, and chip enable.
+## Hardware used
 
-The LC75826 manufacturer datasheet describes the LC75826E/LC75826W as 1/4-duty general-purpose LCD drivers. Relevant documented capabilities include:
+- Sony CDX-A250 detachable front panel
+- LC75826W LCD driver on the panel
+- Arduino-compatible board using Uno-style pin numbering in the reference sketch
+- bench power for the panel
+- pushbutton for the segment-identification routine
+- wiring/protection components used in the demonstrated setup
 
-- direct drive for up to **208 display segments**;
-- up to **8 general-purpose output ports** by reconfiguring S1/P1 through S8/P8;
-- a SANYO CCB-format serial interface;
-- CCB address **41H** (`0x41` in the Arduino source);
-- serial input pins **CE (pin 62)**, **CL (pin 63)**, and **DI (pin 64)** on the LC75826W;
-- control fields for display data, segment/GPIO selection, bias selection, 200/208-segment selection, frame frequency, oscillator mode, display on/off, power-saving mode, and data-group selection.
+The service manual identifies the relevant panel connector as **CN901** and the LCD driver as **IC901 — LC75826W-0S-E**.
 
-See [docs/protocol.md](docs/protocol.md) for the subset that matters to this project.
+## Quick start
 
-## Repository layout
+### 1. Read the connection notes
+
+Start with [`docs/connections.md`](docs/connections.md). The project uses the panel serial interface exposed through CN901:
+
+| Function | Sony CN901 | Arduino sketch |
+| --- | ---: | ---: |
+| DATA-LCD → LC75826 DI | 11 | D8 |
+| CE-LCD → LC75826 CE | 12 | D10 |
+| CLOCK-LCD → LC75826 CL | 13 | D9 |
+| +B panel supply | 14 | external bench supply |
+| Ground | panel ground rail | common with Arduino |
+
+The panel is powered as a Sony front-panel assembly; do **not** bypass the panel circuitry and feed the LC75826 VDD pin directly unless you are deliberately designing a different setup.
+
+### 2. Open the Arduino sketch
+
+Use:
+
+[`arduino/LC75826_Sony_CDX_A250_panel_Car_Radio_V2.ino`](arduino/LC75826_Sony_CDX_A250_panel_Car_Radio_V2.ino)
+
+The original source is preserved as the reference implementation used for this project. It is intentionally not rewritten into a library because the goal is to keep the demonstrated behavior traceable.
+
+The main pin definitions are:
+
+```cpp
+#define VFD_in  8
+#define VFD_clk 9
+#define VFD_ce  10
+#define BUTTON_PIN 2
+#define addr 0x41
+```
+
+The historical `VFD_` variable names are kept unchanged even though this Sony panel uses an LCD.
+
+### 3. Upload and observe
+
+The sketch uses the serial monitor at **115200 baud** for debug and segment-identification output.
+
+The main demo sequence exercises:
+
+- `allOFF()`
+- `allON()`
+- `msgHiFolks()`
+- `msgSONY()`
+- `msgCDX()`
+- `searchOfSegments()`
+
+## LC75826 communication in this project
+
+The LC75826 uses SANYO's CCB serial format. The project uses the documented device address:
+
+```text
+41H
+```
+
+Each transfer starts with the address and then sends one of four 72-bit groups. The two DD bits identify the group:
+
+| DD | Display-data range |
+| --- | --- |
+| `00` | D1–D52 |
+| `01` | D53–D104 |
+| `10` | D105–D152 |
+| `11` | D153–D208 |
+
+The first group also carries the control fields that configure the driver, including:
+
+- P0–P3: segment-output / general-purpose-output selection
+- DR: LCD bias selection
+- DN: 200/208-segment selection
+- FC0–FC2: frame-frequency control
+- OC: internal/external oscillator mode
+- SC: display on/off
+- BU: normal/power-saving mode
+
+The reference source shifts each byte **least-significant bit first**.
+
+For the detailed transfer layout and the exact relationship to the sketch, see [`docs/protocol.md`](docs/protocol.md).
+
+## Why segment mapping is necessary
+
+The LC75826 datasheet defines the electrical correspondence between D1…D208 and the driver's segment/common matrix. It cannot tell us which visible symbol Sony connected to each matrix position on the custom LCD glass.
+
+That mapping must be discovered experimentally.
+
+The included `searchOfSegments()` routine advances through test states one at a time. A pushbutton on D2 advances the test while the serial monitor prints enough information to identify the current state.
+
+The recommended workflow is documented in [`docs/segment-mapping.md`](docs/segment-mapping.md).
+
+## Repository structure
 
 ```text
 .
 ├── README.md
+├── LICENSE
+├── ASSET_LICENSE.md
+├── THIRD_PARTY_NOTICES.md
 ├── arduino/
 │   └── LC75826_Sony_CDX_A250_panel_Car_Radio_V2.ino
-├── docs/
-│   ├── connections.md
-│   ├── protocol.md
-│   ├── segment-mapping.md
-│   ├── troubleshooting.md
-│   ├── references.md
-│   ├── licensing.md
-│   └── assets/
-│       ├── lc75826-data-groups.svg
-│       └── sony-display-interface.svg
-└── LICENSE-NOTICE.md
+└── docs/
+    ├── connections.md
+    ├── protocol.md
+    ├── segment-mapping.md
+    ├── troubleshooting.md
+    ├── references.md
+    ├── licensing.md
+    └── assets/
+        ├── lc75826-data-groups.svg
+        └── sony-display-interface.svg
 ```
 
-The manufacturer datasheet and Sony service manual are **not redistributed in this repository**. They are cited in [docs/references.md](docs/references.md).
+## Technical documentation
 
-## Current Arduino sketch
+- [Connections and bench setup](docs/connections.md)
+- [LC75826 protocol notes](docs/protocol.md)
+- [Segment-identification workflow](docs/segment-mapping.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Primary references and provenance](docs/references.md)
+- [Licensing and attribution](docs/licensing.md)
 
-The source is preserved as the project reference sketch rather than silently rewritten into a library. Its own header explicitly describes it as example/reference code intended to be adapted.
+## Primary references
 
-### Pin names used by the sketch
+The technical work is based on:
 
-| Arduino pin | Sketch name | Role in the sketch | Documentation status |
-| --- | --- | --- | --- |
-| D8 | `VFD_in` | Serial data output toward LC75826 | Code-observed; LC75826 input is DI |
-| D9 | `VFD_clk` | Serial clock output | Code-observed; LC75826 input is CL |
-| D10 | `VFD_ce` | Chip-enable output | Code-observed; LC75826 input is CE |
-| D2 | `BUTTON_PIN` | Falling-edge interrupt used to advance segment testing | Code-observed |
+- **SANYO LC75826E / LC75826W — 1/4-Duty General-Purpose LCD Display Driver**
+- **Sony CDX-A250 / CDX-A250EE Service Manual**, Ver. 1.1, 2006-01, publication 9-879-865-02
+- the original project hardware, firmware, photographs, and measurements used in the video
 
-The `VFD_` variable names are historical names in the sketch. The Sony panel documented here is an **LCD** panel; the source file is kept unchanged so that this repository does not silently alter the engineer's working reference.
+The manufacturer PDFs are **not redistributed here**. See [`docs/references.md`](docs/references.md) for source identification and links.
 
-### Important: power and connector hookup
+## Troubleshooting priorities
 
-The service manual identifies the panel connector signals and the project material includes an annotated bench-wiring photograph. However, the exact public reproduction recipe for panel power, ground, connector pin choice, backlight behavior, and any protective/series components has not yet been recorded as engineer-approved project scope.
+If the display does not respond, check the problem in layers:
 
-**Do not infer a bench hookup from the table above alone.** See [docs/connections.md](docs/connections.md). The unresolved items are explicitly marked `NEEDS_ENGINEER_REVIEW`.
+1. panel power and common ground;
+2. CE / CL / DI continuity;
+3. presence of address `0x41`;
+4. correct DD group transmission;
+5. INH / SC / BU state;
+6. segment data and mapping.
 
-## Uploading and running the sketch
+Do not start by changing character-pattern bytes when the failure may be in power or serial transport.
 
-1. Open `arduino/LC75826_Sony_CDX_A250_panel_Car_Radio_V2.ino` in the Arduino IDE.
-2. Select the board/port appropriate to the Arduino hardware used for the project. The source comments use Arduino Uno pin numbering.
-3. Confirm the physical panel connections against [docs/connections.md](docs/connections.md) **after the `NEEDS_ENGINEER_REVIEW` items there have been resolved**.
-4. Upload the sketch.
-5. Open the serial monitor at **115200 baud** if you want to follow the segment-identification output.
+## License
 
-At startup/loop time the current sketch exercises `allOFF()`, `allON()`, `msgHiFolks()`, `msgSONY()`, and `msgCDX()`, then enters `searchOfSegments()`.
+The project is intentionally permissive:
 
-## How communication is organized
+- **code:** MIT License;
+- **original documentation, diagrams, and project photographs:** CC BY 4.0;
+- **manufacturer/service documents, logos, trademarks, and other third-party material:** remain the property of their respective owners and are not relicensed here.
 
-The manufacturer documentation divides the LC75826 transfer into an 8-bit CCB address followed by one of four 72-bit data groups selected by the two DD bits:
+See [`docs/licensing.md`](docs/licensing.md) and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
-| DD group | Display data represented in the group | Other bits in that 72-bit group |
-| --- | --- | --- |
-| `00` | D1–D52 | control data + DD |
-| `01` | D53–D104 | fixed/control positions + DD |
-| `10` | D105–D152 | fixed/control positions + DD |
-| `11` | D153–D208 | fixed/control positions + DD |
+## Video
 
-The current sketch sends address `0x41`, shifts bytes **least-significant bit first**, and uses four group-ending byte patterns corresponding to DD `00`, `01`, `10`, and `11`.
+The complete walkthrough and hardware demonstration are available here:
 
-That is enough to explain the structure of the working code without claiming that every comment or byte-boundary annotation in this early sketch is a canonical implementation of the datasheet. See [docs/protocol.md](docs/protocol.md) for the exact distinction.
-
-## Segment identification
-
-The LC75826 datasheet tells us how display data D1…D208 maps to driver output/common combinations, but it cannot tell us which physical symbol or stroke Sony assigned to each combination on the custom LCD glass. That part must be mapped experimentally.
-
-The sketch includes `searchOfSegments()` and `segments()` for this purpose. In broad terms:
-
-1. one test bit is selected at a time;
-2. a button press advances to the next test step;
-3. the display is updated;
-4. the serial monitor prints the scan counter, selected block, byte group, bit index, and test-byte values;
-5. the visible LCD element can then be recorded against that test step.
-
-There is an important caveat: the present scan counter reaches values beyond the datasheet's D1…D208 display-data range and `segments()` transmits complemented test bytes (`~Aa` … `~Ah`). Therefore the sketch's printed `nSeg` value must **not yet be presented as a universally verified D-number mapping**. The exact numbering convention remains `NEEDS_ENGINEER_REVIEW` before a polished segment map is published.
-
-See [docs/segment-mapping.md](docs/segment-mapping.md).
-
-## Source-backed facts vs project-specific facts
-
-To make the tutorial auditable, this repository uses a simple distinction:
-
-- **SOURCE_VERIFIED** — directly supported by the LC75826 manufacturer datasheet or the Sony CDX-A250/A250EE service manual.
-- **OBSERVED** — directly present in the supplied working source or project media.
-- **NEEDS_ENGINEER_REVIEW** — a project-specific interpretation, hookup detail, discrepancy, or technical statement that has not yet been explicitly confirmed for publication.
-
-This is especially important for old/reverse-engineered hardware: a plausible generic hookup is not a substitute for the connection actually tested on this panel revision.
-
-## Troubleshooting
-
-Start with [docs/troubleshooting.md](docs/troubleshooting.md). The first checks are the serial-interface path (CE/CL/DI), the LC75826 inhibit state, the selected data group/control state, and—only after the project hookup is confirmed—the panel supply/ground arrangement.
-
-## Documentation and external references
-
-The main primary sources are:
-
-- **SANYO LC75826E / LC75826W datasheet**, ordering/document family `EN*A0159` / `No.A0161`.
-- **Sony CDX-A250 / CDX-A250EE Service Manual**, Ver. 1.1 (2006-01), Sony publication **9-879-865-02**.
-
-They are cited rather than copied. Links and source-identification details are in [docs/references.md](docs/references.md).
-
-## YouTube video
-
-This repository accompanies the LC75826 / Sony CDX-A250 tutorial video from the channel. The permanent video URL will be added after publication.
-
-`VIDEO_URL_PENDING_RELEASE`
-
-## Licensing and attribution
-
-The current project source arrived without a recorded software license in the production material. This staging repository therefore does **not** silently assign a license to code that may belong to another contributor/rightsholder.
-
-Before the repository is made public, ownership should be confirmed and an explicit code license selected. A permissive license such as MIT is a sensible option **if the code owner agrees**. Original project photographs/diagrams can be licensed separately (for example CC BY 4.0) if their creator wants reuse.
-
-Manufacturer datasheets, Sony service documentation, trademarks, logos, and any crops derived from those documents are not relicensed here. See [docs/licensing.md](docs/licensing.md) and [LICENSE-NOTICE.md](LICENSE-NOTICE.md).
-
-## Current release blockers
-
-Before changing this staging repository to public, the smallest useful technical-review pass is to confirm:
-
-1. the exact panel connector/power/ground wiring used in the demonstrated build;
-2. whether any level shifting or series protection is required/recommended in the published build;
-3. the final meaning of the control-byte values actually used by the example sketch;
-4. the intended numbering convention for the interactive segment scan;
-5. code and image ownership/licensing.
-
-Everything else in the tutorial should remain traceable either to the primary documentation or to the supplied project itself.
+**https://youtu.be/Oe9wPHL-y7k**

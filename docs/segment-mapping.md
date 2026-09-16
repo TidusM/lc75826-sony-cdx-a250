@@ -1,12 +1,10 @@
-# Segment-identification and mapping workflow
+# Segment identification and mapping
 
-The LC75826 datasheet defines the electrical correspondence between D1…D208 and the driver's segment/common outputs. It does **not** document the custom Sony LCD glass artwork. Mapping the visible CDX-A250 symbols therefore requires an empirical test.
+The LC75826 datasheet defines D1…D208 electrically. The Sony LCD glass defines what those data positions look like to the viewer. The second part must be discovered experimentally.
 
-The supplied Arduino sketch contains an interactive helper for doing exactly that.
+## Electrical mapping
 
-## What is source-verified
-
-For segment-output mode, each segment output corresponds to four display-data bits—one per COM output. The manufacturer table runs continuously from:
+For segment-output mode, each segment output corresponds to four display-data bits, one for each COM output:
 
 ```text
 S1/P1:    D1   D2   D3   D4
@@ -25,21 +23,50 @@ S51:      D201 D202 D203 D204
 S52/OSCI: D205 D206 D207 D208
 ```
 
-That gives an electrical address space. The remaining question is which visible LCD element Sony connected to each address.
+The full correspondence table is in the LC75826 datasheet.
 
-## What the project sketch does — OBSERVED
+## Interactive mapping routine
 
-`searchOfSegments()` cycles through test-byte positions. For each step it:
+The reference sketch contains `searchOfSegments()` and `segments()`.
 
-1. clears `Aa` through `Ah`;
-2. sets one mask bit in one of those bytes;
-3. advances a counter called `nSeg`;
-4. selects a `blockBit` value;
-5. waits for the test pushbutton;
-6. calls `segments()` to update the display;
-7. prints the counter, block, group, mask-bit index, and byte values over serial.
+The test routine:
 
-`segments()` sends the bitwise complement of the eight test bytes:
+1. clears the working bytes `Aa` through `Ah`;
+2. selects one bit position;
+3. chooses the appropriate data block;
+4. waits for the D2 pushbutton event;
+5. updates the display;
+6. prints the current test information over serial.
+
+Open the Arduino serial monitor at **115200 baud** while running the scan.
+
+## Practical mapping workflow
+
+Use a worksheet such as:
+
+| Test step | DD block | Byte | Bit | Visible LCD element | Notes |
+| ---: | ---: | ---: | ---: | --- | --- |
+|  |  |  |  |  |  |
+
+For each button press:
+
+1. observe the visible element that changes;
+2. record the serial output;
+3. photograph ambiguous symbols if useful;
+4. repeat uncertain steps;
+5. convert the recorded test position to the datasheet D-number using the active DD group and byte/bit position.
+
+Recording video of the panel while capturing serial output is especially useful because the visual state and the software state can be reconciled later.
+
+## About the scan counter
+
+The sketch's internal `nSeg` counter is a **test-step counter used by this reference routine**. For documentation work, the safest identifier is the complete tuple printed by the sketch—block, byte/group, bit index, and test value—then the corresponding D1…D208 position can be derived explicitly.
+
+This avoids treating an implementation counter as if it were itself the manufacturer's formal D-number.
+
+## Complemented test bytes
+
+During the segment scan, `segments()` transmits the bitwise complement of the working bytes:
 
 ```cpp
 send_char_without(~Aa);
@@ -48,74 +75,16 @@ send_char_without(~Ab);
 send_char_without(~Ah);
 ```
 
-and then sends a group-ending byte selected by `blockBit`.
+That inversion is part of the demonstrated reference routine. Preserve it when reproducing the original scan.
 
-The serial monitor therefore gives the experimenter a reproducible identifier for the state visible on the LCD.
+## Turning a map into useful code
 
-## Running the mapping experiment
+Once the physical mapping is known, avoid hard-coding only complete words. A more reusable second-stage implementation can define named LCD features or character segments and then compose text/icons from those mappings.
 
-After the project wiring has been confirmed against `connections.md`:
+For example, a future mapping table could contain:
 
-1. upload the reference sketch;
-2. open the serial monitor at **115200 baud**;
-3. allow the normal demo sequence to finish and enter `searchOfSegments()`;
-4. press the D2 test button once for each step;
-5. observe which single LCD stroke/icon changes;
-6. record the printed scan information and the visible element;
-7. continue until the relevant display has been covered;
-8. repeat questionable entries rather than guessing.
+```text
+visible feature -> D-number -> DD group -> byte -> bit
+```
 
-A useful worksheet format is:
-
-| Test step printed by sketch | Block | Byte/group | Bit index | Visible LCD element | Confidence / notes |
-| ---: | ---: | ---: | ---: | --- | --- |
-|  |  |  |  |  |  |
-
-Photographing or filming the LCD while capturing serial output can make later reconciliation much easier.
-
-## Important numbering caveat
-
-The present implementation advances `nSeg` beyond **208**, while the LC75826 manufacturer display-data range is D1…D208. The block-range tests in `searchOfSegments()` also contain boundary values that deserve a deliberate review.
-
-Therefore:
-
-> **Do not equate the sketch's printed `nSeg` counter with manufacturer D1…D208 numbering without first validating the relationship.**
-
-This relationship is `NEEDS_ENGINEER_REVIEW`.
-
-That does not make the scan useless: the printed tuple (counter/block/group/mask/bytes) is still a reproducible experimental identifier. It simply means the polished public mapping should distinguish **test-step number** from **datasheet D-number** unless the engineer confirms they are intentionally identical over a given range.
-
-## Why the bytes are complemented
-
-The current source deliberately transmits `~Aa` … `~Ah` during the segment scan. That inversion is **OBSERVED** in the working code.
-
-The reason and intended visible-state convention should not be reconstructed from guesswork. Record it as:
-
-`NEEDS_ENGINEER_REVIEW`
-
-Until that is clarified, describe the scan operationally ("one test state at a time") rather than asserting that a `1` or `0` directly means "segment on" everywhere in the test helper.
-
-## Existing handwritten mapping material
-
-The project media includes a handwritten segment-identification sheet and segment-identification footage. Those are valuable working evidence, but the current production technical brief does not yet record the numbering scheme as approved.
-
-For that reason the staging repository does **not** publish the handwritten map as an authoritative lookup table yet.
-
-Once reviewed, the best final form would be:
-
-- one clean image of the LCD with segment labels;
-- a CSV/Markdown table mapping visible feature → datasheet D-number;
-- a second column retaining the original sketch test-step number if it differs;
-- enough notes to reproduce ambiguous icons/multi-segment characters.
-
-## Recommended validation pass before publication
-
-For each final mapping entry:
-
-1. confirm the physical LCD element by repeat test;
-2. reconcile its scan tuple to the datasheet data group;
-3. convert to D1…D208 only when the correspondence is certain;
-4. spot-check several entries from each DD group;
-5. verify any entries used by `msgHiFolks()`, `msgSONY()`, and `msgCDX()` against the actual displayed result.
-
-This keeps the map useful for future code rather than preserving an unexamined one-off counter convention.
+Keep that future abstraction separate from the original reference sketch so that the working baseline remains easy to compare with the video and hardware.

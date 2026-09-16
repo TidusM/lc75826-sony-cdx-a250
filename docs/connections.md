@@ -1,49 +1,41 @@
 # Connections and bench setup
 
-This page deliberately separates **documented signal identities** from the **project-specific bench hookup**. The latter is not yet fully engineer-approved for public reproduction.
+This page describes the interface used by the Sony CDX-A250 panel in the demonstrated project.
 
-## 1. LC75826 serial pins — SOURCE_VERIFIED
+## LC75826 serial interface
 
-From the LC75826E/LC75826W manufacturer datasheet:
+The LC75826W serial inputs are:
 
 | LC75826W pin | Symbol | Function |
 | ---: | --- | --- |
-| 62 | CE | Chip enable / serial-transfer input |
-| 63 | CL | Synchronization clock input |
-| 64 | DI | Serial data input |
-| 56 | VDD | IC power-supply pin; manufacturer allowable operating range is 4.5–6.0 V |
-| 59 | VSS | Ground |
-| 61 | INH | Inhibit input; can force the display off |
+| 62 | CE | chip enable |
+| 63 | CL | serial clock |
+| 64 | DI | serial data |
+| 56 | VDD | IC supply |
+| 59 | VSS | ground |
+| 61 | INH | inhibit input |
 
-These are **IC-pin facts**, not instructions to bypass the Sony panel circuitry and power the IC directly.
+These are IC-pin definitions from the LC75826 datasheet. In this project the Arduino communicates through the **Sony panel connector and panel circuitry**, not by bypassing the board and wiring directly to the IC supply pins.
 
-## 2. Sony CDX-A250 panel interface — SOURCE_VERIFIED
+## Sony panel connector
 
-The CDX-A250/A250EE service manual's display block diagram shows the main system controller driving IC901 as follows:
+The Sony CDX-A250 service schematic identifies the front-panel connector as **CN901**.
 
-- system-controller `LCD SO` → IC901 `DI`;
-- system-controller `LCD CKO` → IC901 `CLK/CL`;
-- system-controller `LCD CE` → IC901 `CE`.
+Relevant signals are:
 
-The key-board schematic identifies IC901 as `LC75826W-0S-E` and LCD901 as the liquid-crystal display.
+| CN901 pin | Sony signal | Project role |
+| ---: | --- | --- |
+| 1 | D-GND | panel digital ground |
+| 5 | A-GND | panel analog ground |
+| 11 | DATA-LCD | serial data path to LC75826 DI |
+| 12 | CE-LCD | chip-enable path to LC75826 CE |
+| 13 | CLOCK-LCD | serial clock path to LC75826 CL |
+| 14 | +B | panel supply input |
+| 15 | PANEL | panel-detection/control signal in the original radio |
 
-The panel connector is CN901. The service-manual schematic names, among others:
+## Arduino signal wiring
 
-| CN901 pin | Service-manual signal name |
-| ---: | --- |
-| 1 | D-GND |
-| 5 | A-GND |
-| 11 | DATA-LCD |
-| 12 | CE-LCD |
-| 13 | CLOCK-LCD |
-| 14 | +B |
-| 15 | PANEL |
-
-This table reports labels from the service documentation. It does **not** by itself define a safe standalone bench-power recipe.
-
-## 3. Arduino signal assignment in the supplied sketch — OBSERVED
-
-The current reference sketch defines:
+The reference sketch uses:
 
 ```cpp
 #define VFD_in 8
@@ -52,26 +44,26 @@ The current reference sketch defines:
 #define BUTTON_PIN 2
 ```
 
-and uses those pins as follows:
+For the demonstrated serial interface:
 
-| Arduino pin | Intended serial role in source | Corresponding LC75826 signal |
+| Arduino | Sony panel | LC75826 function |
 | ---: | --- | --- |
-| D8 | data output | DI |
-| D9 | clock output | CL |
-| D10 | chip-enable output | CE |
-| D2 | segment-test pushbutton interrupt | project helper, not an LC75826 pin |
+| D8 | CN901 pin 11, DATA-LCD | DI |
+| D9 | CN901 pin 13, CLOCK-LCD | CL |
+| D10 | CN901 pin 12, CE-LCD | CE |
+| GND | panel ground | common reference |
 
-The `VFD_` names are retained from the original sketch even though the Sony panel is LCD-based.
+The sketch comments recommend **1 kΩ series resistors** on the three serial lines as simple protection. They are not a substitute for a level translator in a design that genuinely requires level translation.
 
-## 4. Series resistors — OBSERVED IN SOURCE / NEEDS_ENGINEER_REVIEW
+## Panel power
 
-Comments next to D8/D9/D10 say that a **1 kΩ resistor can be used to protect each line**. Because that is a project-source recommendation rather than a manufacturer requirement recorded in the current technical brief, the final public wording and exact placement remain:
+The demonstrated project powers the **panel assembly** through its board-level supply path. The Sony schematic labels CN901 pin 14 as `+B`; the project material uses a **12 VDC bench supply** at the panel side.
 
-`NEEDS_ENGINEER_REVIEW`
+Use a current-limited bench supply when first reproducing the setup and verify the exact board revision before applying power.
 
-Do not reinterpret those comments as a validated logic-level converter.
+The LC75826 itself operates from the panel's local supply circuitry. Do not treat the IC's VDD specification as permission to connect the external bench supply directly to the IC VDD pin.
 
-## 5. Pushbutton for segment identification — OBSERVED IN SOURCE
+## Segment-test pushbutton
 
 The sketch configures D2 as:
 
@@ -82,51 +74,33 @@ attachInterrupt(digitalPinToInterrupt(BUTTON_PIN),
                 FALLING);
 ```
 
-The end-of-file comment also says the segment search uses a button to ground and mentions **2 kΩ**.
+The button therefore advances the scan by creating a falling edge on D2. The reference source comments also mention a resistor in the test-button wiring; reproduce the demonstrated wiring rather than adding an unnecessary external pull-up when `INPUT_PULLUP` is enabled.
 
-Because `INPUT_PULLUP` and the source comment need to be reconciled into one unambiguous construction drawing, the exact published button/resistor hookup is:
+## Backlight and panel functions
 
-`NEEDS_ENGINEER_REVIEW`
+The key/display board contains circuitry beyond the LC75826 LCD interface, including LED illumination and panel controls. A working LCD serial interface does not automatically imply that every backlight or key-related function is controlled through the same three LC75826 serial wires.
 
-The code-level behavior is clear: a falling edge on D2 advances the interactive scan.
+When debugging, separate:
 
-## 6. Panel power — NEEDS_ENGINEER_REVIEW
+1. panel power;
+2. LCD driver communication;
+3. LCD segment data;
+4. illumination/backlight behavior;
+5. key/panel logic.
 
-Project media contains an annotated photograph showing a standalone wiring arrangement that labels the panel-side supply as `+12VDC`, and the Sony service schematic labels CN901 pin 14 as `+B`. The panel circuitry then includes its own LCD-driver supply network.
+That distinction avoids diagnosing a lighting problem as a serial-protocol failure.
 
-However, the production technical brief does not yet record the exact engineer-approved standalone power procedure, including:
+## First power-up checklist
 
-- which CN901 pins are connected on the bench;
-- the intended supply voltage/current limit;
-- which ground pin(s) are used;
-- whether the backlight is powered in the same configuration;
-- whether the `PANEL` line needs a defined state;
-- protective components and sequencing, if any.
+Before sending display data:
 
-For that reason this repository intentionally does **not** turn the annotated photo into a step-by-step power instruction yet.
+1. verify the panel board revision and CN901 orientation;
+2. use a current-limited bench supply;
+3. establish a common ground between Arduino and panel;
+4. connect D8/D9/D10 to DATA-LCD/CLOCK-LCD/CE-LCD;
+5. check for accidental shorts;
+6. upload the unmodified reference sketch;
+7. confirm serial output at 115200 baud;
+8. observe CE/CL/DI with a logic analyzer or oscilloscope if the display remains inactive.
 
-### Publication gate
-
-Before public release, replace this section with the actual tested hookup and its conditions after engineer confirmation. Until then:
-
-> **Do not connect a bench supply to the panel based only on connector names or this draft repository.**
-
-## 7. Logic levels — NEEDS_ENGINEER_REVIEW for the project hookup
-
-The manufacturer datasheet defines LC75826 input thresholds relative to VDD; it does not establish that every Arduino/panel combination is automatically safe. The Sony service schematic also shows the original head-unit controller environment, not a generic Arduino interface.
-
-The demonstrated build works, but the final tutorial should explicitly state the tested Arduino board, LC75826/panel supply state, any series protection, and whether level translation is required or merely optional.
-
-`NEEDS_ENGINEER_REVIEW`
-
-## 8. What is safe to prepare now
-
-Before the remaining review is complete you can still:
-
-1. inspect the board and locate CN901 / IC901;
-2. read the primary documents in `references.md`;
-3. inspect the Arduino source and understand its CE/CL/DI assignments;
-4. study the packet structure in `protocol.md`;
-5. prepare a segment-mapping worksheet.
-
-The missing information is deliberately concentrated here rather than scattered as assumptions throughout the tutorial.
+For protocol-level debugging continue with [`protocol.md`](protocol.md).

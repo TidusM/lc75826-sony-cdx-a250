@@ -1,107 +1,88 @@
 # Troubleshooting
 
-This page starts with checks that are supported by the primary documentation or the supplied source. It intentionally avoids inventing an unreviewed power/wiring recipe.
+Work from the electrical layers upward. Most failures are easier to isolate when power, transport, control state, and segment data are checked separately.
 
 ## Nothing appears on the LCD
 
-Check in this order:
+Check, in order:
 
-1. **Do not assume the panel power hookup.** Confirm the standalone CN901 supply/ground arrangement against the engineer-approved build first. See `connections.md`.
-2. Verify that the Arduino pins used by the sketch really reach the LC75826 serial path:
-   - D8 → DI/data path;
-   - D9 → CL/clock path;
-   - D10 → CE/chip-enable path.
-3. Check **INH**. The manufacturer datasheet states that the INH input can force the display off. The exact standalone-panel INH state is part of the project hookup and should be confirmed rather than improvised.
-4. Check that the first LC75826 group is actually transmitted. The datasheet requires the D1–D52/control-data group even when fewer than 153 display segments are used.
-5. Confirm that the control data does not select `SC = 1` (segments off) or an unintended power-saving state.
+1. panel power and current draw;
+2. common ground between Arduino and panel;
+3. continuity of D8 → DATA-LCD, D9 → CLOCK-LCD, D10 → CE-LCD;
+4. CE/CL/DI activity with a scope or logic analyzer;
+5. transmission of CCB address `0x41`;
+6. LC75826 inhibit/control state;
+7. first data group (D1–D52 + control fields);
+8. display data.
 
-## Some segments work but others never change
+Relevant control states:
 
-The LC75826 display data is split across four DD groups:
+- `SC = 0` — segments enabled;
+- `BU = 0` — normal mode;
+- `INH` must not be forcing the driver/display inactive.
 
-- `00`: D1–D52;
-- `01`: D53–D104;
-- `10`: D105–D152;
-- `11`: D153–D208.
+## Only part of the display responds
 
-For a panel using data above D152, the datasheet example sends all four groups. A missing/wrong group selection can therefore look like a partially working display.
+Check the DD groups:
 
-Also check the **DN** control bit. The datasheet uses DN to select up-to-200 vs up-to-208 segment operation; in the 200-segment mode S51/S52 are not both available as normal segment outputs.
+- `00` → D1–D52
+- `01` → D53–D104
+- `10` → D105–D152
+- `11` → D153–D208
 
-## First eight segment outputs behave like ordinary digital outputs
+If the display uses data above D152, all four groups are needed.
 
-S1/P1 through S8/P8 can be switched between LCD segment outputs and general-purpose outputs by P0–P3 control data. Confirm that the control state matches the intended use.
+Also check `DN`, which selects 200- vs 208-segment operation.
 
-## Display stays off despite data activity
+## S1/P1 through S8/P8 behave unexpectedly
 
-Primary-source checks include:
+These outputs can be configured as LCD segment outputs or as general-purpose outputs. Check P0–P3 in the first transfer group.
 
-- INH state;
-- SC state (`0` = display on, `1` = display off);
-- BU state (`0` = normal mode, `1` = power-saving mode);
-- oscillator mode/control state;
-- valid panel/IC power.
+## Logic-analyzer data looks reversed
 
-The exact project values and physical hookup remain subject to the review notes in `connections.md` and `protocol.md`.
+The source shifts each byte **least-significant bit first**.
 
-## Serial data looks reversed on a logic analyzer
+For example, `0B10000000` is not observed on DI in the same left-to-right order in which the literal is written.
 
-The supplied `send_char_without()` function starts with mask `0b00000001` and shifts the mask left, so **each C/C++ byte is sent least-significant bit first**.
+## Segment scan looks inverted
 
-For example, do not visually read a literal such as `0B10000000` left-to-right and assume that is its order on the DI wire.
+The reference `segments()` routine sends `~Aa` through `~Ah`. Keep that inversion when comparing your result with the original project.
 
-## Segment-search number does not match D1…D208
+## Segment number and datasheet D-number do not line up
 
-That is currently expected to require reconciliation.
+Treat the scan's `nSeg` value as a test-step counter. Use the printed DD block, byte/group, and bit position to reconcile the state to D1…D208.
 
-The sketch's `nSeg` counter reaches values beyond 208, while the LC75826 datasheet defines display data D1…D208. Treat the printed counter as a **test-step identifier**, not an authoritative datasheet D-number, until the mapping convention is engineer-approved.
+See [`segment-mapping.md`](segment-mapping.md).
 
-See `segment-mapping.md`.
+## Backlight is off but LCD data works
 
-## Segment search seems inverted
+The illumination circuitry and LCD serial interface are separate diagnostic layers. A working LC75826 transfer does not guarantee that the panel LEDs/backlight are powered or controlled as expected.
 
-`segments()` sends complemented values (`~Aa` through `~Ah`). That behavior is present in the reference source. The reason/visible-state convention has not yet been recorded as an approved technical explanation.
+Verify the panel power/illumination path before changing LCD packet data.
 
-`NEEDS_ENGINEER_REVIEW`
+## Arduino uploads successfully but nothing changes
 
-## The demo messages differ after code cleanup
+An upload only proves that the Arduino accepted the sketch. Confirm:
 
-The binary constants in `msgHiFolks()`, `msgSONY()`, and `msgCDX()` are the actual project pattern data. Refactoring them into character fonts, tables, or a generalized display library can be useful later, but it should be tested against the hardware before replacing the reference version.
+1. the serial reset/start message at 115200 baud;
+2. CE/CL/DI toggling;
+3. address `0x41`;
+4. group transfers;
+5. valid control state;
+6. panel power and common ground;
+7. actual segment activity.
 
-For the current repository, preserve the original sketch as the known reference rather than treating a prettier rewrite as equivalent without validation.
-
-## Backlight is off while LCD segments work
-
-The Sony service documentation shows separate panel/backlight circuitry around the key/display board. The exact standalone backlight hookup and whether it is controlled by one of the LC75826-configured general-purpose outputs are project-specific details that still require final engineer confirmation.
-
-`NEEDS_ENGINEER_REVIEW`
-
-Do not diagnose a dark backlight as an LC75826 serial failure without separating LCD operation from illumination circuitry.
-
-## Arduino upload succeeds but the panel remains unchanged
-
-Separate the problem into layers:
-
-1. Arduino program is running (serial reset/start message appears).
-2. CE/CL/DI signals are toggling.
-3. Address `0x41` and group traffic are present.
-4. LC75826 is not inhibited/off/power-saving unexpectedly.
-5. Panel supply and common ground are correct for the tested build.
-6. LCD glass segment changes are observed.
-
-This prevents changing pattern bytes when the actual failure is at power, inhibit, or serial-interface level.
-
-## Before opening an issue / comparing results
+## When comparing results
 
 Record:
 
-- exact Arduino board;
-- exact sketch commit/file version;
-- which CDX-A250/A250EE panel/board revision you have;
-- power source and current limit (after the public hookup is approved);
-- logic-analyzer capture if available;
+- Arduino board;
+- exact sketch version/commit;
+- panel/board revision;
+- bench supply voltage and current limit;
 - whether all-on/all-off works;
-- whether any of the three demo messages work;
-- serial-monitor output from the failing segment-search step.
+- whether `HI FOLKS`, `SONY`, or `CDX-A250` works;
+- logic-analyzer capture if available;
+- serial output from the relevant segment-test step.
 
-Those details are far more useful than a generic "display does not work" report.
+Those details make faults reproducible and much easier to diagnose.

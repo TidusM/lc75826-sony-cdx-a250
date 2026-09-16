@@ -1,18 +1,16 @@
-# LC75826 communication notes used by this project
+# LC75826 protocol notes used by this project
 
-This is **not** a replacement for the LC75826 datasheet. It extracts only the protocol/control concepts needed to understand the supplied Sony CDX-A250 Arduino project.
-
-Unless explicitly marked otherwise, the IC behavior on this page is `SOURCE_VERIFIED` from the LC75826E/LC75826W manufacturer datasheet.
+This page extracts the part of the LC75826 interface needed to understand the supplied Sony CDX-A250 Arduino sketch. It is not a replacement for the manufacturer datasheet.
 
 ## CCB address
 
-The datasheet assigns the LC75826 CCB address:
+The LC75826 CCB address used by the project is:
 
 ```text
 41H
 ```
 
-The Arduino source therefore defines:
+and the source defines:
 
 ```cpp
 #define addr 0x41
@@ -20,108 +18,87 @@ The Arduino source therefore defines:
 
 ## Serial signals
 
-The LC75826 serial-transfer inputs are:
+The transfer uses three LC75826 inputs:
 
-- **CE** — chip enable;
-- **CL** — synchronization clock;
-- **DI** — transfer data.
+- **CE** — chip enable
+- **CL** — synchronization clock
+- **DI** — serial data
 
-On the LC75826W they are pins 62, 63, and 64 respectively.
+The Sony service documentation shows the original system controller driving the same LCD CE, clock, and serial-data paths toward IC901.
 
-The Sony CDX-A250 service manual shows the original system controller supplying the equivalent LCD CE, clock, and serial-data signals to IC901.
+## Transfer organization
 
-## Four 72-bit data groups
+After the 8-bit CCB address, the LC75826 receives a 72-bit group. The final two bits, **DD**, identify which part of the display-data space is being written.
 
-The manufacturer transfer format places an 8-bit CCB address before each 72-bit data group. The final two bits of the group are `DD`, described by the datasheet as **direction data**.
-
-| DD | Display-data portion | Remaining positions in the 72-bit group |
+| DD | Display data carried | Additional fields |
 | --- | --- | --- |
-| `00` | D1–D52 (52 bits) | 18 control bits + 2 DD bits |
-| `01` | D53–D104 (52 bits) | 18 fixed bits + 2 DD bits |
-| `10` | D105–D152 (48 bits) | 22 fixed bits + 2 DD bits |
-| `11` | D153–D208 (56 bits) | 14 fixed bits + 2 DD bits |
+| `00` | D1–D52 | control data + DD |
+| `01` | D53–D104 | fixed positions + DD |
+| `10` | D105–D152 | fixed positions + DD |
+| `11` | D153–D208 | fixed positions + DD |
 
-When **153 or more segments are used**, the datasheet's transfer example says all four 72-bit groups (288 bits total, excluding the repeated 8-bit addresses) are sent.
+![LC75826 transfer groups](assets/lc75826-data-groups.svg)
 
-When fewer than 153 segments are used, 72, 144, or 216 bits may be used depending on the required range, but the first group containing D1–D52 and the control data must always be sent.
+For a panel using data above D152, all four groups are required.
 
-![LC75826 data groups](assets/lc75826-data-groups.svg)
+## Control fields
 
-## Control data present in the first group
+The first transfer group carries the main operating controls.
 
-After D1–D52, the first 72-bit group contains the following documented control fields before DD:
+### P0–P3 — segment/GPIO selection
 
-```text
-P0 P1 P2 P3 DR DN FC0 FC1 FC2 OC SC BU
-```
+S1/P1 through S8/P8 can operate as LCD segment outputs or general-purpose outputs. The P0–P3 combination selects how many of these pins are converted to P1–P8.
 
-(with fixed zero positions around these fields as shown in the manufacturer transfer diagram).
+### DR — LCD bias
 
-### P0–P3: segment outputs vs general-purpose outputs
-
-These fields control whether S1/P1 through S8/P8 operate as LCD segment outputs or general-purpose outputs.
-
-The all-zero setting keeps S1 through S8 as segment outputs. Other documented combinations progressively convert S1/P1, S2/P2, etc. to P1, P2, etc.; `1000` configures all eight as P1–P8 general-purpose outputs.
-
-This matters to the Sony panel because some project code comments discuss pins configured as GPIO as well as LCD-segment drive.
-
-### DR: bias selection
-
-| DR | Datasheet drive scheme |
+| DR | Drive scheme |
 | --- | --- |
-| `0` | 1/3-bias drive |
-| `1` | 1/2-bias drive |
+| `0` | 1/3 bias |
+| `1` | 1/2 bias |
 
-### DN: 200/208-segment mode
+### DN — 200/208-segment selection
 
-| DN | Datasheet mode |
+| DN | Mode |
 | --- | --- |
-| `0` | up to 200 display segments; S51 is forced low and S52/OSCI is low in internal-oscillator mode or OSCI in external-clock mode |
-| `1` | up to 208 display segments; S51 is a segment output and S52/OSCI is a segment output in internal-oscillator mode |
+| `0` | up to 200 display segments |
+| `1` | up to 208 display segments |
 
-This is why DN appears prominently in the project explanatory material.
+In 208-segment mode, S51 and S52/OSCI are available as segment outputs under the documented oscillator conditions.
 
-### FC0–FC2: display waveform frame frequency
+### FC0–FC2 — frame frequency
 
-These three bits select the common/segment waveform frame frequency from documented divisors of the internal oscillator or external clock.
+These bits select the LCD common/segment waveform frame frequency from the ratios defined in the datasheet.
 
-The exact frequency choice used by the current project should be stated only after decoding the project's control bytes and confirming the intended setting:
+### OC — oscillator mode
 
-`NEEDS_ENGINEER_REVIEW`
-
-### OC: oscillator mode
-
-| OC | Datasheet mode | S52/OSCI function |
-| --- | --- | --- |
-| `0` | internal oscillator | S52 segment output |
-| `1` | external clock | OSCI external-clock input |
-
-### SC: segment on/off
-
-| SC | Datasheet display state |
+| OC | Mode |
 | --- | --- |
-| `0` | On |
-| `1` | Off |
+| `0` | internal oscillator |
+| `1` | external clock |
 
-### BU: normal/power-saving mode
+### SC — display enable
 
-| BU | Datasheet mode |
+| SC | Display |
 | --- | --- |
-| `0` | Normal |
-| `1` | Power-saving |
+| `0` | on |
+| `1` | off |
 
-The power-saving mode has additional behavior documented in the datasheet; refer to the primary source rather than relying on this abbreviated table.
+### BU — power mode
 
-## Display data D1–D208
+| BU | Mode |
+| --- | --- |
+| `0` | normal |
+| `1` | power saving |
 
-The LC75826 does not decode characters for you. Display data is transferred directly to the segment/common matrix.
+## D1–D208 and the LCD matrix
 
-The manufacturer correspondence table assigns four display-data bits to each segment output—one for each common output. Examples:
+The LC75826 does not receive characters. It receives individual display-data bits.
+
+Each segment output has one data bit for each of the four common outputs. Examples:
 
 | Segment output | COM1 | COM2 | COM3 | COM4 |
 | --- | ---: | ---: | ---: | ---: |
 | S1/P1 | D1 | D2 | D3 | D4 |
-| S2/P2 | D5 | D6 | D7 | D8 |
 | S13 | D49 | D50 | D51 | D52 |
 | S14 | D53 | D54 | D55 | D56 |
 | S26 | D101 | D102 | D103 | D104 |
@@ -132,49 +109,39 @@ The manufacturer correspondence table assigns four display-data bits to each seg
 | S51 | D201 | D202 | D203 | D204 |
 | S52/OSCI | D205 | D206 | D207 | D208 |
 
-The full table is in the manufacturer datasheet.
+The custom Sony LCD determines which visible icon or stroke is connected to each matrix position. That is why physical segment mapping is required.
 
-This electrical matrix does **not** reveal which visible stroke, icon, or character segment Sony connected to each matrix point. That physical-glass mapping is what the project's interactive segment scan is meant to discover.
+## What the reference sketch does
 
-## What the Arduino source does — OBSERVED
+### Bit order
 
-### Byte shifting
+`send_char_without()` starts with mask `0b00000001` and shifts the mask left. Each byte is therefore transmitted **LSB first**.
 
-`send_char_without()` iterates its mask from `0b00000001` upward, so the sketch transmits each supplied byte **least-significant bit first**.
-
-### Address strobe
+### Address phase
 
 `send_addr()`:
 
 1. drives CE low;
-2. clocks out the `0x41` address;
+2. shifts out `0x41`;
 3. raises CE after the address.
 
-The subsequent bytes are then clocked by `send_char_without()` before CE is returned low at the end of the group.
+The following bytes are then shifted before CE is returned low at the end of the selected group.
 
-This description is the literal behavior of the supplied source. For full CE/CL timing requirements, use the manufacturer timing diagrams and limits.
+### Group-ending values used by the sketch
 
-### DD/group-ending patterns
-
-The current source uses the following final byte values in several routines:
+The reference code uses these final-byte patterns when selecting the four groups:
 
 ```cpp
-0B00000000  // group/DD 00
-0B10000000  // group/DD 01 in the source's byte-shift representation
-0B01000000  // group/DD 10
-0B11000000  // group/DD 11
+0B00000000  // DD 00
+0B10000000  // DD 01 in the sketch's LSB-first representation
+0B01000000  // DD 10
+0B11000000  // DD 11
 ```
 
-Because the code transmits each byte LSB-first, visual reading of the C/C++ binary literal from left to right is **not** the same as wire-order reading. This is one reason the repository avoids rewriting these literals into a new abstraction until the engineer confirms the intended final implementation.
+Because the source transmits LSB first, do not infer wire order by reading the C++ binary literal left-to-right.
 
-## Current-source caveats — NEEDS_ENGINEER_REVIEW
+## Why the original source is preserved
 
-The reference sketch is useful but intentionally not presented as a polished LC75826 library. Before publishing a normalized packet encoder, verify:
+The sketch is deliberately straightforward and repetitive. That is useful here: each display pattern can be traced directly to the data sent to the driver.
 
-1. the exact project control-bit values represented by every final byte in `allON()`, `allOFF()`, and the text-message functions;
-2. which control/GPIO state the Sony board requires for its additional panel functions;
-3. the intended handling of unused/fixed bit positions;
-4. the relationship between the segment-search counter and manufacturer D1…D208 numbering;
-5. any source comments whose segment ranges do not exactly match the manufacturer transfer diagram.
-
-Until then, the original code is the reference implementation and this document explains it without silently changing its semantics.
+A future library could abstract packets, control fields, fonts, or segment tables, but that should be treated as a separate implementation and tested against the hardware. The repository keeps the demonstrated sketch as the reference baseline.
