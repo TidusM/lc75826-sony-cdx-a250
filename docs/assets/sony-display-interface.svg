@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="430" viewBox="0 0 1100 430" role="img" aria-labelledby="title desc">
+  <title id="title">Sony CDX-A250 display serial interface</title>
+  <desc id="desc">Original simplified diagram based on the Sony CDX-A250 service-manual display block diagram, showing the system controller's LCD SO, LCD CKO and LCD CE signals connected to LC75826W IC901 DI, CL and CE.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#333"/>
+    </marker>
+  </defs>
+  <style>
+    text { font-family: Arial, Helvetica, sans-serif; fill: #111; }
+    .title { font-size: 30px; font-weight: 700; }
+    .box { fill: #f7f7f7; stroke: #333; stroke-width: 2.5; }
+    .boxtitle { font-size: 22px; font-weight: 700; }
+    .label { font-size: 18px; }
+    .small { font-size: 14px; }
+    .signal { stroke: #333; stroke-width: 3; marker-end: url(#arrow); }
+  </style>
+  <rect width="1100" height="430" fill="white"/>
+  <text x="40" y="50" class="title">Sony CDX-A250 display-section serial path</text>
+
+  <rect x="55" y="105" width="285" height="220" rx="12" class="box"/>
+  <text x="197" y="145" text-anchor="middle" class="boxtitle">IC501</text>
+  <text x="197" y="175" text-anchor="middle" class="label">System controller</text>
+  <text x="95" y="220" class="label">LCD SO · pin 28</text>
+  <text x="95" y="260" class="label">LCD CKO · pin 29</text>
+  <text x="95" y="300" class="label">LCD CE · pin 27</text>
+
+  <rect x="750" y="105" width="295" height="220" rx="12" class="box"/>
+  <text x="897" y="145" text-anchor="middle" class="boxtitle">IC901</text>
+  <text x="897" y="175" text-anchor="middle" class="label">LC75826W-0S-E</text>
+  <text x="812" y="220" class="label">DI · pin 64</text>
+  <text x="812" y="260" class="label">CL · pin 63</text>
+  <text x="812" y="300" class="label">CE · pin 62</text>
+
+  <line x1="340" y1="214" x2="745" y2="214" class="signal"/>
+  <line x1="340" y1="254" x2="745" y2="254" class="signal"/>
+  <line x1="340" y1="294" x2="745" y2="294" class="signal"/>
+  <text x="542" y="205" text-anchor="middle" class="label">serial data</text>
+  <text x="542" y="245" text-anchor="middle" class="label">clock</text>
+  <text x="542" y="285" text-anchor="middle" class="label">chip enable</text>
+
+  <text x="55" y="375" class="small">Original repository redraw from the Sony CDX-A250/A250EE service-manual display block diagram.</text>
+  <text x="55" y="400" class="small">This diagram reports documented signal relationships only; standalone Arduino power/connector wiring is covered separately and requires project review.</text>
+</svg>
