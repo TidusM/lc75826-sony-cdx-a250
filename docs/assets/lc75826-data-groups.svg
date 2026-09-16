@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+  <title id="title">LC75826 serial data groups used in the project</title>
+  <desc id="desc">Original diagram summarizing the four 72-bit data groups documented by the LC75826 datasheet.</desc>
+  <style>
+    text { font-family: Arial, Helvetica, sans-serif; fill: #111; }
+    .title { font-size: 30px; font-weight: 700; }
+    .subtitle { font-size: 17px; }
+    .rowlabel { font-size: 19px; font-weight: 700; }
+    .boxtext { font-size: 17px; font-weight: 600; }
+    .small { font-size: 14px; }
+    .address { fill: #e7eef8; stroke: #415a77; stroke-width: 2; }
+    .display { fill: #e7f4e4; stroke: #4d7c54; stroke-width: 2; }
+    .other { fill: #fff4d6; stroke: #9a7627; stroke-width: 2; }
+    .dd { fill: #f7e5ee; stroke: #8d4c6c; stroke-width: 2; }
+  </style>
+  <rect width="1200" height="520" fill="white"/>
+  <text x="40" y="50" class="title">LC75826 serial transfer: four data groups</text>
+  <text x="40" y="80" class="subtitle">Each transaction shown here begins with the 8-bit CCB address 41H, followed by one 72-bit group.</text>
+
+  <g transform="translate(40 120)">
+    <text x="0" y="33" class="rowlabel">DD 00</text>
+    <rect x="95" y="0" width="155" height="52" rx="6" class="address"/>
+    <text x="172" y="32" text-anchor="middle" class="boxtext">Address 41H · 8</text>
+    <rect x="260" y="0" width="510" height="52" rx="6" class="display"/>
+    <text x="515" y="32" text-anchor="middle" class="boxtext">Display data D1–D52 · 52 bits</text>
+    <rect x="780" y="0" width="260" height="52" rx="6" class="other"/>
+    <text x="910" y="32" text-anchor="middle" class="boxtext">Control data · 18 bits</text>
+    <rect x="1050" y="0" width="95" height="52" rx="6" class="dd"/>
+    <text x="1097" y="32" text-anchor="middle" class="boxtext">DD · 2</text>
+
+    <text x="0" y="108" class="rowlabel">DD 01</text>
+    <rect x="95" y="75" width="155" height="52" rx="6" class="address"/>
+    <text x="172" y="107" text-anchor="middle" class="boxtext">Address 41H · 8</text>
+    <rect x="260" y="75" width="510" height="52" rx="6" class="display"/>
+    <text x="515" y="107" text-anchor="middle" class="boxtext">Display data D53–D104 · 52 bits</text>
+    <rect x="780" y="75" width="260" height="52" rx="6" class="other"/>
+    <text x="910" y="107" text-anchor="middle" class="boxtext">Fixed data · 18 bits</text>
+    <rect x="1050" y="75" width="95" height="52" rx="6" class="dd"/>
+    <text x="1097" y="107" text-anchor="middle" class="boxtext">DD · 2</text>
+
+    <text x="0" y="183" class="rowlabel">DD 10</text>
+    <rect x="95" y="150" width="155" height="52" rx="6" class="address"/>
+    <text x="172" y="182" text-anchor="middle" class="boxtext">Address 41H · 8</text>
+    <rect x="260" y="150" width="470" height="52" rx="6" class="display"/>
+    <text x="495" y="182" text-anchor="middle" class="boxtext">Display data D105–D152 · 48 bits</text>
+    <rect x="740" y="150" width="300" height="52" rx="6" class="other"/>
+    <text x="890" y="182" text-anchor="middle" class="boxtext">Fixed data · 22 bits</text>
+    <rect x="1050" y="150" width="95" height="52" rx="6" class="dd"/>
+    <text x="1097" y="182" text-anchor="middle" class="boxtext">DD · 2</text>
+
+    <text x="0" y="258" class="rowlabel">DD 11</text>
+    <rect x="95" y="225" width="155" height="52" rx="6" class="address"/>
+    <text x="172" y="257" text-anchor="middle" class="boxtext">Address 41H · 8</text>
+    <rect x="260" y="225" width="550" height="52" rx="6" class="display"/>
+    <text x="535" y="257" text-anchor="middle" class="boxtext">Display data D153–D208 · 56 bits</text>
+    <rect x="820" y="225" width="220" height="52" rx="6" class="other"/>
+    <text x="930" y="257" text-anchor="middle" class="boxtext">Fixed data · 14 bits</text>
+    <rect x="1050" y="225" width="95" height="52" rx="6" class="dd"/>
+    <text x="1097" y="257" text-anchor="middle" class="boxtext">DD · 2</text>
+  </g>
+
+  <text x="40" y="440" class="subtitle">For 153 or more segments, the datasheet transfer example sends all four 72-bit groups (288 group bits total).</text>
+  <text x="40" y="470" class="small">Original repository diagram derived from the LC75826E/LC75826W manufacturer transfer-format tables; no manufacturer artwork reproduced.</text>
+</svg>
